@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BitChat Replica</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="join-panel" id="joinPanel">
+        <h1>BitChat Replica</h1>
+        <p>Realtime room chat with private messages.</p>
+        <form id="joinForm" class="join-form">
+          <label>
+            Username
+            <input id="usernameInput" type="text" maxlength="24" required placeholder="alex" />
+          </label>
+          <label>
+            Room
+            <input id="roomInput" type="text" maxlength="32" placeholder="lobby" />
+          </label>
+          <button type="submit">Join Chat</button>
+          <p id="joinError" class="error"></p>
+        </form>
+      </section>
+
+      <section class="chat-panel hidden" id="chatPanel">
+        <header class="chat-header">
+          <div>
+            <h2 id="roomTitle">#lobby</h2>
+            <p id="identityText"></p>
+          </div>
+          <div class="hint">Use <strong>/dm user message</strong> for private chat.</div>
+        </header>
+
+        <div class="chat-content">
+          <aside class="users-card">
+            <h3>Online</h3>
+            <ul id="usersList"></ul>
+          </aside>
+
+          <section class="messages-card">
+            <ul id="messagesList" class="messages-list"></ul>
+            <form id="messageForm" class="message-form">
+              <input id="messageInput" type="text" maxlength="500" placeholder="Write a message..." autocomplete="off" />
+              <button type="submit">Send</button>
+            </form>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "name": "bitchat-copy",
+  "version": "1.0.0",
+  "description": "BitChat-style real-time chat replica with Socket.IO and SQLite",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robbbb234143/Bitchat-Copy.git"
+  },
+  "keywords": [
+    "chat",
+    "socket.io",
+    "express",
+    "sqlite"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/robbbb234143/Bitchat-Copy/issues"
+  },
+  "homepage": "https://github.com/robbbb234143/Bitchat-Copy#readme",
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3"
+  }
+}
