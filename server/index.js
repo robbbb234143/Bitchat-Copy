@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const { Server } = require("socket.io");
 const { saveMessage, getRecentMessages } = require("./db");
+const { initializeCrypto, encryptText, decryptText } = require("./pgp");
 
 const app = express();
 app.use(cors());
@@ -37,6 +38,13 @@ function normalizeMessage(value) {
   return String(value || "").trim().slice(0, 500);
 }
 
+async function hydrateMessage(row) {
+  return {
+    ...row,
+    body: await decryptText(row.body)
+  };
+}
+
 function emitRoomState(room) {
   const users = [...usersBySocket.values()]
     .filter((user) => user.room === room)
@@ -65,97 +73,111 @@ function removeUsernameSocket(username, socketId) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("join", ({ username, room }, ack = () => {}) => {
-    const normalizedUsername = normalizeName(username);
-    const normalizedRoom = normalizeRoom(room);
+  socket.on("join", async ({ username, room }, ack = () => {}) => {
+    try {
+      const normalizedUsername = normalizeName(username);
+      const normalizedRoom = normalizeRoom(room);
 
-    if (!normalizedUsername) {
-      ack({ ok: false, error: "Username is required." });
-      return;
+      if (!normalizedUsername) {
+        ack({ ok: false, error: "Username is required." });
+        return;
+      }
+
+      if (socketsByUsername.has(normalizedUsername)) {
+        ack({ ok: false, error: "Username is already in use." });
+        return;
+      }
+
+      socket.join(normalizedRoom);
+      usersBySocket.set(socket.id, {
+        socketId: socket.id,
+        username: normalizedUsername,
+        room: normalizedRoom
+      });
+      addUsernameSocket(normalizedUsername, socket.id);
+
+      const history = await Promise.all(
+        getRecentMessages(normalizedRoom).map((message) => hydrateMessage(message))
+      );
+      socket.emit("message_history", history);
+
+      io.to(normalizedRoom).emit("system_message", {
+        body: `${normalizedUsername} joined #${normalizedRoom}`,
+        createdAt: Date.now()
+      });
+
+      emitRoomState(normalizedRoom);
+      ack({ ok: true, room: normalizedRoom, username: normalizedUsername });
+    } catch {
+      ack({ ok: false, error: "Unable to join securely right now." });
     }
-
-    if (socketsByUsername.has(normalizedUsername)) {
-      ack({ ok: false, error: "Username is already in use." });
-      return;
-    }
-
-    socket.join(normalizedRoom);
-    usersBySocket.set(socket.id, {
-      socketId: socket.id,
-      username: normalizedUsername,
-      room: normalizedRoom
-    });
-    addUsernameSocket(normalizedUsername, socket.id);
-
-    const history = getRecentMessages(normalizedRoom);
-    socket.emit("message_history", history);
-
-    io.to(normalizedRoom).emit("system_message", {
-      body: `${normalizedUsername} joined #${normalizedRoom}`,
-      createdAt: Date.now()
-    });
-
-    emitRoomState(normalizedRoom);
-    ack({ ok: true, room: normalizedRoom, username: normalizedUsername });
   });
 
-  socket.on("chat_message", ({ body }, ack = () => {}) => {
-    const currentUser = usersBySocket.get(socket.id);
+  socket.on("chat_message", async ({ body }, ack = () => {}) => {
+    try {
+      const currentUser = usersBySocket.get(socket.id);
 
-    if (!currentUser) {
-      ack({ ok: false, error: "Join a room before sending messages." });
-      return;
-    }
-
-    const normalizedBody = normalizeMessage(body);
-    if (!normalizedBody) {
-      ack({ ok: false, error: "Message cannot be empty." });
-      return;
-    }
-
-    if (normalizedBody.startsWith("/dm ")) {
-      const parts = normalizedBody.split(" ");
-      const target = normalizeName(parts[1]);
-      const directBody = normalizeMessage(parts.slice(2).join(" "));
-
-      if (!target || !directBody) {
-        ack({ ok: false, error: "Usage: /dm <username> <message>" });
+      if (!currentUser) {
+        ack({ ok: false, error: "Join a room before sending messages." });
         return;
       }
 
-      const targetSockets = socketsByUsername.get(target);
-      if (!targetSockets || targetSockets.size === 0) {
-        ack({ ok: false, error: `User ${target} is not online.` });
+      const normalizedBody = normalizeMessage(body);
+      if (!normalizedBody) {
+        ack({ ok: false, error: "Message cannot be empty." });
         return;
       }
 
-      const dmPayload = {
-        id: null,
+      if (normalizedBody.startsWith("/dm ")) {
+        const parts = normalizedBody.split(" ");
+        const target = normalizeName(parts[1]);
+        const directBody = normalizeMessage(parts.slice(2).join(" "));
+
+        if (!target || !directBody) {
+          ack({ ok: false, error: "Usage: /dm <username> <message>" });
+          return;
+        }
+
+        const targetSockets = socketsByUsername.get(target);
+        if (!targetSockets || targetSockets.size === 0) {
+          ack({ ok: false, error: `User ${target} is not online.` });
+          return;
+        }
+
+        const dmPayload = {
+          id: null,
+          room: currentUser.room,
+          sender: currentUser.username,
+          body: directBody,
+          private: true,
+          recipient: target,
+          createdAt: Date.now()
+        };
+
+        socket.emit("chat_message", dmPayload);
+        for (const targetSocket of targetSockets) {
+          io.to(targetSocket).emit("chat_message", dmPayload);
+        }
+
+        ack({ ok: true });
+        return;
+      }
+
+      const encryptedBody = await encryptText(normalizedBody);
+      const saved = saveMessage({
         room: currentUser.room,
         sender: currentUser.username,
-        body: directBody,
-        private: true,
-        recipient: target,
-        createdAt: Date.now()
-      };
+        body: encryptedBody
+      });
 
-      socket.emit("chat_message", dmPayload);
-      for (const targetSocket of targetSockets) {
-        io.to(targetSocket).emit("chat_message", dmPayload);
-      }
-
+      io.to(currentUser.room).emit("chat_message", {
+        ...saved,
+        body: normalizedBody
+      });
       ack({ ok: true });
-      return;
+    } catch {
+      ack({ ok: false, error: "Unable to secure that message." });
     }
-
-    const saved = saveMessage({
-      room: currentUser.room,
-      sender: currentUser.username,
-      body: normalizedBody
-    });
-
-    io.to(currentUser.room).emit("chat_message", saved);
-    ack({ ok: true });
   });
 
   socket.on("disconnect", () => {
@@ -179,7 +201,17 @@ io.on("connection", (socket) => {
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 
-server.listen(PORT, HOST, () => {
+async function start() {
+  await initializeCrypto();
+
+  server.listen(PORT, HOST, () => {
+    // eslint-disable-next-line no-console
+    console.log(`BitChat replica running at http://${HOST}:${PORT}`);
+  });
+}
+
+start().catch((error) => {
   // eslint-disable-next-line no-console
-  console.log(`BitChat replica running at http://${HOST}:${PORT}`);
+  console.error("Failed to initialize crypto:", error);
+  process.exitCode = 1;
 });

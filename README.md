@@ -4,6 +4,7 @@ A working BitChat-style chat replica built with:
 
 - Express + Socket.IO backend
 - SQLite persistence for room messages
+- OpenPGP-backed message encryption at rest in the backend
 - Browser client served by the same server
 
 ## Features
@@ -61,4 +62,6 @@ If it does not connect, allow inbound TCP `3000` in your firewall/router.
 ## Notes
 
 - Public room messages are persisted.
+- The server encrypts room messages with an OpenPGP keypair before saving them to SQLite.
+- On first launch, the server creates local PGP key material under `server/.pgp/` and reuses it on later runs.
 - Private `/dm` messages are realtime only (not persisted).
