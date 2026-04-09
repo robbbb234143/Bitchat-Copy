@@ -16,7 +16,7 @@
     <main class="shell">
       <section class="join-panel" id="joinPanel">
         <h1>BitChat Replica</h1>
-        <p>Realtime room chat with private messages.</p>
+        <p>Realtime room chat with key-authenticated end-to-end encryption.</p>
         <form id="joinForm" class="join-form">
           <label>
             Username
@@ -37,7 +37,7 @@
             <h2 id="roomTitle">#lobby</h2>
             <p id="identityText"></p>
           </div>
-          <div class="hint">Use <strong>/dm user message</strong> for private chat.</div>
+          <div class="hint">No passphrase. Clients authenticate with key fingerprints.</div>
         </header>
 
         <div class="chat-content">
@@ -58,6 +58,7 @@
     </main>
 
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/crypto.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>
